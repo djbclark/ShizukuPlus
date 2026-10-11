@@ -3,6 +3,7 @@ package af.shizuku.manager.utils
 import af.shizuku.manager.BuildConfig
 import af.shizuku.manager.ShizukuApplication
 import af.shizuku.manager.ShizukuSettings
+import af.shizuku.manager.database.ActivityLogManager
 import android.Manifest.permission.WRITE_SECURE_SETTINGS
 import android.content.pm.PackageManager
 import android.provider.Settings
@@ -110,6 +111,7 @@ object ShizukuStateMachine {
                 }
 
                 if (newState == State.RUNNING) {
+                    applyWatchdogDefault()
                     try {
                         val context = ShizukuApplication.appContext
                         CoroutineScope(Dispatchers.IO).launch {
@@ -246,6 +248,21 @@ object ShizukuStateMachine {
         if (!isRunning()) return false
         val startedBuild = ShizukuSettings.getServerStartedBuild()
         return startedBuild in 1 until BuildConfig.VERSION_CODE
+    }
+
+    /**
+     * A new install's Watchdog default turns on with its first server, so that until a server has
+     * run the watchdog starts nothing and shows nothing (see ShizukuSettings.decideWatchdogDefault).
+     */
+    private fun applyWatchdogDefault() {
+        try {
+            val context = ShizukuApplication.appContext
+            if (ShizukuSettings.applyWatchdogDefaultOnFirstRun(context)) {
+                ActivityLogManager.log("Shizuku", context.packageName, "Watchdog: turned on with the first server start (the default for a new install)")
+            }
+        } catch (e: Exception) {
+            Timber.tag("ShizukuStateMachine").w(e, "Failed to apply the new-install Watchdog default")
+        }
     }
 
     fun isDead(): Boolean = (get() == State.STOPPED || get() == State.CRASHED)

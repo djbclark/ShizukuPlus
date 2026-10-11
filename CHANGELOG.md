@@ -56,6 +56,9 @@ All notable changes to ShizukuPlus are documented here. See [AI_ATTRIBUTIONS.md]
   - **Drop (clearView)**: `OvershootInterpolator(2.2f)` over 350 ms — the card springs back with a satisfying overshoot before settling; `gestureEnd` haptic fires unconditionally on release.
   - **gestureEnd()** added to `HapticUtils`: uses `GESTURE_END` on API 30+, falls back to `LONG_PRESS` on older devices.
 
+#### Watchdog
+- **The Watchdog is now on for new installs** — with it off, nothing restarted the server after it stopped unexpectedly, for example when adbd restarts on Android 12 or later and takes an ADB-started server with it. A new install now turns the Watchdog on the first time the server starts (not before: until then there is nothing to watch, and no Watchdog notification appears), and Settings shows it on from the start, so it can be turned off beforehand. An update keeps the setting it had: if you never changed the switch, the Watchdog stays off. A settings backup that has no Watchdog setting restores it as off.
+
 ### 📖 Documentation
 - **Added fork migration guide** — `FORK_MIGRATION.md` provides an AI-assisted migration prompt (contributed by [@djbclark](https://github.com/djbclark)) for developers rebasing their own Shizuku forks onto Shizuku+, plus Shizuku+-specific tips covering the API submodule boundary, explicit AIDL transaction codes, and ProGuard keep requirements. Linked from `CONTRIBUTING.md`. ([#562](https://github.com/thejaustin/ShizukuPlus/issues/562))
 
