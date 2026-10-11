@@ -4,6 +4,7 @@ import static rikka.shizuku.server.ServerConstants.PERMISSION;
 
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Handler;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -47,6 +48,15 @@ public class ShizukuConfigManager extends ConfigManager {
      * ({@link #scheduleWriteLocked(boolean)}).
      */
     private static final long WRITE_DELAY = 10 * 1000;
+
+    /**
+     * How long the first retry of a failed write waits. Each further failure in a row doubles
+     * it, up to {@link #WRITE_DELAY}.
+     */
+    private static final long RETRY_FIRST_DELAY = 1000;
+
+    /** How many failed writes in a row between the lines that say the config is still not saved. */
+    private static final int FAILURE_LOG_EVERY = 60;
 
     /** No write is waiting. */
     private static final int WRITE_NONE = 0;
@@ -97,39 +107,98 @@ public class ShizukuConfigManager extends ConfigManager {
         return new ShizukuConfig();
     }
 
-    /** Writes {@code json} as the config; the caller serializes it. A seam for tests. */
-    static void writeJson(String json) {
+    /**
+     * Writes {@code json} as the config; the caller serializes it. A seam for tests.
+     *
+     * @throws IOException the config was not saved; the previous one is kept
+     */
+    static void writeJson(String json) throws IOException {
         synchronized (ATOMIC_FILE) {
-            FileOutputStream stream;
+            saveConfig(ATOMIC_FILE, json.getBytes());
+            LOGGER.v("config saved to " + ATOMIC_FILE.getBaseFile().getAbsolutePath());
+        }
+    }
+
+    /**
+     * Writes {@code bytes} to {@code file} ({@link #writeAtomically}), then gives the file the
+     * config's mode ({@link #setConfigFileMode}) whether or not the write succeeded: a write that
+     * failed its checks can still leave a file it created at the base name.
+     *
+     * @throws IOException the bytes were not saved
+     */
+    static void saveConfig(AtomicFile file, byte[] bytes) throws IOException {
+        try {
+            writeAtomically(file, bytes);
+        } finally {
+            setConfigFileMode(file.getBaseFile());
+        }
+    }
+
+    /**
+     * Mode 0660, group shell, on {@code file} if it exists. A failure is logged; it never counts
+     * as a failed save.
+     */
+    static void setConfigFileMode(File file) {
+        // Closing #419: the config file was previously world-readable/writable.
+        // Root bypasses DAC checks entirely, so it doesn't need explicit bits here;
+        // only shell needs explicit access, granted via group ownership. No "other"
+        // access is needed, so we restrict to owner+group read/write only.
+        if (!file.exists()) {
+            return;
+        }
+        try {
+            Os.chmod(file.getAbsolutePath(), 0660);
+            Os.chown(file.getAbsolutePath(), -1, android.os.Process.SHELL_UID);
+        } catch (ErrnoException | RuntimeException e) {
+            LOGGER.w("failed to set permissions on " + file.getAbsolutePath() + ": " + e);
+        }
+    }
+
+    /** {@link Build.VERSION#SDK_INT}; a seam for tests. */
+    static int sdkInt() {
+        return Build.VERSION.SDK_INT;
+    }
+
+    /**
+     * Writes {@code bytes} to {@code file} and checks that they reached it.
+     * {@link AtomicFile#finishWrite} does not report a failed sync, close or (on API 30+) rename
+     * of the new file into place: it only logs it. So the data is synced here before
+     * finishWrite, and afterwards the base file must hold as many bytes as were written, with no
+     * backup left beside it (AtomicFile reads a backup in place of the base file) and, on API
+     * 30+, no new file (one left was not renamed into place).
+     *
+     * @throws IOException the bytes were not saved; AtomicFile keeps the previous file
+     */
+    static void writeAtomically(AtomicFile file, byte[] bytes) throws IOException {
+        synchronized (file) {
+            FileOutputStream stream = file.startWrite();
             try {
-                stream = ATOMIC_FILE.startWrite();
-            } catch (IOException e) {
-                LOGGER.e("failed to write state: " + e);
-                return;
-            }
-
-            try {
-                stream.write(json.getBytes());
-
-                ATOMIC_FILE.finishWrite(stream);
-
-                // Closing #419: the config file was previously world-readable/writable.
-                // Root bypasses DAC checks entirely, so it doesn't need explicit bits here;
-                // only shell needs explicit access, granted via group ownership. No "other"
-                // access is needed, so we restrict to owner+group read/write only.
-                File file = ATOMIC_FILE.getBaseFile();
-                if (file.exists()) {
-                    try {
-                        Os.chmod(file.getAbsolutePath(), 0660);
-                        Os.chown(file.getAbsolutePath(), -1, android.os.Process.SHELL_UID);
-                    } catch (ErrnoException e) {
-                        LOGGER.w("failed to set permissions on " + file.getAbsolutePath() + ": " + e);
-                    }
-                }
-                LOGGER.v("config saved to " + file.getAbsolutePath());
+                stream.write(bytes);
+                stream.getFD().sync();
             } catch (Throwable tr) {
-                LOGGER.e(tr, "can't save %s, restoring backup.", ATOMIC_FILE.getBaseFile());
-                ATOMIC_FILE.failWrite(stream);
+                file.failWrite(stream);
+                throw tr;
+            }
+            file.finishWrite(stream);
+
+            File base = file.getBaseFile();
+            File newFile = new File(base.getPath() + ".new");
+            File backup = new File(base.getPath() + ".bak");
+            String problem = null;
+            // Only API 30+ writes through a new file; before it, one there is not this write's.
+            if (sdkInt() >= 30 && newFile.exists()) {
+                problem = "the new file was not renamed into place";
+                // Only ever the file this write made; the next write would truncate it anyway.
+                if (!newFile.delete()) {
+                    LOGGER.w("cannot delete " + newFile);
+                }
+            } else if (backup.exists()) {
+                problem = "the backup is still in place";
+            } else if (base.length() != bytes.length) {
+                problem = "it holds " + base.length() + " bytes of " + bytes.length;
+            }
+            if (problem != null) {
+                throw new IOException("can't save " + base + ": " + problem);
             }
         }
     }
@@ -137,9 +206,15 @@ public class ShizukuConfigManager extends ConfigManager {
     /**
      * Writes a change still waiting for the worker now, on the calling thread; does nothing when
      * none is waiting. Called before the server exits, which would otherwise lose it.
+     *
+     * @return false when a change is still waiting afterwards: the write failed, or a change was
+     * made after it
      */
-    void flushPendingWrite() {
+    boolean flushPendingWrite() {
         writePending();
+        synchronized (this) {
+            return pendingWrite == WRITE_NONE;
+        }
     }
 
     /**
@@ -147,6 +222,10 @@ public class ShizukuConfigManager extends ConfigManager {
      * which every change holds, and written under ATOMIC_FILE's, held across both so that two
      * writes (the worker's and an exit's flush) cannot reach the disk in the other order. Nothing
      * takes ATOMIC_FILE while holding this object's lock.
+     *
+     * <p>A write that fails leaves the change waiting and posts a retry
+     * ({@link #writeFailedLocked(Throwable)}), so the worker tries again and an exit's flush finds
+     * it waiting.
      */
     private void writePending() {
         synchronized (ATOMIC_FILE) {
@@ -162,12 +241,62 @@ public class ShizukuConfigManager extends ConfigManager {
                 try {
                     json = GSON_OUT.toJson(config);
                 } catch (Throwable tr) {
-                    LOGGER.e(tr, "can't save %s", ATOMIC_FILE.getBaseFile());
+                    writeFailedLocked(tr);
                     return;
                 }
             }
-            writeJson(json);
+            Throwable failure = null;
+            try {
+                writeJson(json);
+            } catch (Throwable tr) {
+                failure = tr;
+            }
+            synchronized (this) {
+                if (failure != null) {
+                    writeFailedLocked(failure);
+                } else if (writeFailures > 0) {
+                    LOGGER.i("config saved to %s after %d failed attempts", ATOMIC_FILE.getBaseFile(), writeFailures);
+                    writeFailures = 0;
+                }
+            }
         }
+    }
+
+    /**
+     * After a write that failed: the change waits again, and a retry is posted after
+     * {@link #retryDelay(int)}. A prompt write posted meanwhile (a change made during the write)
+     * is left to run as posted, and a delayed one is brought forward to the retry. The failure is
+     * logged with its cause at the start of a run of failures, again in one line every
+     * {@link #FAILURE_LOG_EVERY} failures while the run lasts, and the write that ends the run
+     * says so.
+     */
+    private void writeFailedLocked(Throwable failure) {
+        writeFailures++;
+        if (writeFailures % FAILURE_LOG_EVERY == 0) {
+            LOGGER.w("%s still not saved after %d failed attempts: %s", ATOMIC_FILE.getBaseFile(), writeFailures, failure);
+        }
+        if (pendingWrite == WRITE_PROMPT) {
+            if (writeFailures == 1) {
+                LOGGER.e(failure, "can't save %s; the previous config is kept, trying again now",
+                        ATOMIC_FILE.getBaseFile());
+            }
+            return;
+        }
+        long delay = retryDelay(writeFailures);
+        if (writeFailures == 1) {
+            LOGGER.e(failure, "can't save %s; the previous config is kept, trying again in %d ms",
+                    ATOMIC_FILE.getBaseFile(), delay);
+        }
+        Handler handler = HandlerKt.getWorkerHandler();
+        handler.removeCallbacks(mWriteRunner);
+        handler.postDelayed(mWriteRunner, delay);
+        pendingWrite = WRITE_DELAYED;
+    }
+
+    /** {@link #RETRY_FIRST_DELAY}, doubled for each failure in a row after the first, at most {@link #WRITE_DELAY}. */
+    private static long retryDelay(int failures) {
+        int doublings = Math.min(Math.max(failures - 1, 0), 16);
+        return Math.min(WRITE_DELAY, RETRY_FIRST_DELAY << doublings);
     }
 
     private final Runnable mWriteRunner = new Runnable() {
@@ -182,6 +311,9 @@ public class ShizukuConfigManager extends ConfigManager {
 
     /** WRITE_NONE, WRITE_DELAYED or WRITE_PROMPT: the write posted to the worker, if any. */
     private int pendingWrite = WRITE_NONE;
+
+    /** Writes that failed in a row; 0 after one that succeeded. */
+    private int writeFailures = 0;
 
     public ShizukuConfigManager() {
         this.config = load();

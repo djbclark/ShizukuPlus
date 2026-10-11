@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Binder
 import android.os.Handler
 import android.system.Os
+import android.util.AtomicFile
 import com.google.gson.Gson
 import io.mockk.every
 import io.mockk.mockk
@@ -17,9 +18,15 @@ import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.io.TempDir
 import rikka.hidden.compat.PackageManagerApis
 import rikka.hidden.compat.UserManagerApis
 import rikka.shizuku.server.ktx.workerHandler
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.Path
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -42,6 +49,13 @@ class ConfigWriteTimingTest {
     private var installed: List<PackageInfo> = emptyList()
     private val writes = Collections.synchronizedList(mutableListOf<ShizukuConfig>())
     private var duringWrite: (() -> Unit)? = null
+    /** How many of the next writes fail, as a full disk would fail them. */
+    private var failWrites = 0
+    /** The clock at every write attempt, failed or not. */
+    private val attempts = mutableListOf<Long>()
+
+    @TempDir
+    lateinit var dir: Path
 
     private var now = 0L
     private val queue = mutableListOf<Posted>()
@@ -68,7 +82,17 @@ class ConfigWriteTimingTest {
         every { workerHandler } returns handler
 
         every { ShizukuConfigManager.load() } returns stored
+        every { ShizukuConfigManager.sdkInt() } returns 30
         every { ShizukuConfigManager.writeJson(any()) } answers {
+            attempts.add(now)
+            if (failWrites > 0) {
+                failWrites--
+                duringWrite?.let {
+                    duringWrite = null
+                    it()
+                }
+                throw IOException("No space left on device")
+            }
             writes.add(Gson().fromJson(firstArg<String>(), ShizukuConfig::class.java))
             duringWrite?.let {
                 duringWrite = null
@@ -304,6 +328,284 @@ class ConfigWriteTimingTest {
         assertTrue(queue.isEmpty(), "the worker still has a write waiting after the flush")
     }
 
+    // --- failed writes -------------------------------------------------------------------------
+
+    @Test
+    fun `a write that fails is tried again and the change reaches the disk`() {
+        // The real write path over a real directory, with AtomicFile's rename of the new file into
+        // place failing on the first attempt: AtomicFile only logs that, so the write must notice.
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile()).apply { renameFails = 1 }
+        every { ShizukuConfigManager.writeJson(any()) } answers {
+            attempts.add(now)
+            ShizukuConfigManager.saveConfig(file.mock, firstArg<String>().toByteArray())
+        }
+        val manager = start()
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(0)
+        assertFalse(file.base.exists(), "the failed write left something at the config's name")
+        assertEquals(emptyList(), dir.toFile().list()!!.toList(), "the failed write left its new file")
+        advance(BATCH_DELAY)
+
+        assertEquals(2, attempts.size, "the failed write was not tried again, or was tried more than once")
+        val onDisk = Gson().fromJson(file.base.readText(), ShizukuConfig::class.java)
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(onDisk, APP_UID))
+        assertEquals(listOf("shizuku.json"), dir.toFile().list()!!.sorted(), "a new file was left behind")
+        assertTrue(queue.isEmpty(), "a write is still waiting after the change was saved")
+    }
+
+    @Test
+    fun `before API 30 a backup left by a failed write is cleared by the retry that saves the change`() {
+        // AtomicFile before API 30: the old config becomes the backup, the base is written in
+        // place, and a close that fails is only logged and keeps the backup, which is then read
+        // in place of the base.
+        every { ShizukuConfigManager.sdkInt() } returns 29
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile(), pre30 = true).apply { closeFails = 1 }
+        file.base.writeText("{}")
+        every { ShizukuConfigManager.writeJson(any()) } answers {
+            attempts.add(now)
+            ShizukuConfigManager.saveConfig(file.mock, firstArg<String>().toByteArray())
+        }
+        val manager = start()
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(0)
+        assertEquals(1, attempts.size)
+        assertEquals("{}", file.backup.readText(), "the failed write did not keep the previous config as the backup")
+        advance(BATCH_DELAY)
+
+        assertEquals(2, attempts.size, "the failed write was not tried again, or was tried more than once")
+        assertEquals(listOf("shizuku.json"), dir.toFile().list()!!.sorted(), "the retry left the backup")
+        val onDisk = Gson().fromJson(file.base.readText(), ShizukuConfig::class.java)
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(onDisk, APP_UID))
+        assertTrue(queue.isEmpty(), "a write is still waiting after the change was saved")
+    }
+
+    @Test
+    fun `an exit flush after a failed write writes the change`() {
+        val manager = start()
+        failWrites = 1
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(0)
+        assertTrue(writes.isEmpty())
+        assertTrue(manager.flushPendingWrite(), "a flush that wrote the change reported it as not saved")
+
+        assertEquals(1, writes.size, "the exit flush found nothing waiting after the failed write")
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(writes.single(), APP_UID))
+        advance(BATCH_DELAY)
+        assertEquals(1, writes.size, "the retry wrote again after the flush had saved the change")
+    }
+
+    @Test
+    fun `an exit flush that fails says the change is not saved and leaves one retry waiting`() {
+        val manager = start()
+        failWrites = 2
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(0)
+
+        assertFalse(manager.flushPendingWrite(), "a failed flush reported the change as saved")
+        assertEquals(2, attempts.size)
+        assertEquals(1, queue.size, "not exactly one retry waiting after the failed flush")
+        assertTrue(manager.flushPendingWrite(), "a flush that wrote the change reported it as not saved")
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(writes.single(), APP_UID))
+        assertTrue(manager.flushPendingWrite(), "a flush with nothing waiting reported a change not saved")
+    }
+
+    @Test
+    fun `a change made while a write fails is written at once and the earlier change with it`() {
+        val manager = start()
+        failWrites = 1
+        duringWrite = {
+            manager.update(OTHER_UID, listOf(packageOf(OTHER_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        }
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_ALLOWED)
+        advance(0)
+
+        assertEquals(listOf(0L, 0L), attempts, "the change made during the failed write waited for the retry")
+        assertEquals(1, writes.size)
+        assertEquals(ConfigManager.FLAG_ALLOWED, flagsOf(writes.single(), APP_UID))
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(writes.single(), OTHER_UID))
+        advance(BATCH_DELAY)
+        assertEquals(1, writes.size, "a write ran again with nothing new")
+    }
+
+    @Test
+    fun `changes made while writes keep failing are all written once a write succeeds`() {
+        val manager = start()
+        failWrites = 3
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(0)
+        manager.update(OTHER_UID, listOf(packageOf(OTHER_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_ALLOWED)
+        advance(0)
+        manager.update(THIRD_UID, listOf(packageOf(THIRD_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(BATCH_DELAY * 3)
+
+        assertEquals(4, attempts.size)
+        assertEquals(1, writes.size)
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(writes.single(), APP_UID))
+        assertEquals(ConfigManager.FLAG_ALLOWED, flagsOf(writes.single(), OTHER_UID))
+        assertEquals(ConfigManager.FLAG_DENIED, flagsOf(writes.single(), THIRD_UID))
+        assertTrue(queue.isEmpty(), "a write is still waiting after every change was saved")
+    }
+
+    @Test
+    fun `start-up's delayed write that fails is tried again`() {
+        importHolders(10_201)
+        failWrites = 1
+
+        start()
+        advance(BATCH_DELAY)
+        assertTrue(writes.isEmpty())
+        advance(FIRST_RETRY)
+
+        assertEquals(listOf(BATCH_DELAY, BATCH_DELAY + FIRST_RETRY), attempts)
+        assertEquals(ConfigManager.FLAG_ALLOWED, flagsOf(writes.single(), 10_201))
+    }
+
+    @Test
+    fun `writes that keep failing are tried again at a bounded rate`() {
+        val manager = start()
+        failWrites = Int.MAX_VALUE
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(MINUTE)
+
+        val gaps = attempts.zipWithNext { a, b -> b - a }
+        assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 10_000L), gaps.take(5), "the retries did not back off")
+        assertTrue(attempts.size <= 12, "the failed write was tried ${attempts.size} times in a minute: $attempts")
+        assertTrue(gaps.all { it in 1_000..BATCH_DELAY }, "attempts closer than a second or further than the batch delay apart: $attempts")
+        assertEquals(1, queue.size, "not exactly one retry waiting")
+    }
+
+    @Test
+    fun `a write that succeeds ends the failure streak`() {
+        val manager = start()
+        failWrites = 4
+
+        manager.update(APP_UID, listOf(packageOf(APP_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        advance(MINUTE)
+        assertEquals(1, writes.size)
+        attempts.clear()
+        failWrites = 1
+
+        manager.update(OTHER_UID, listOf(packageOf(OTHER_UID)), ConfigManager.MASK_PERMISSION, ConfigManager.FLAG_DENIED)
+        val first = now
+        advance(MINUTE)
+
+        assertEquals(2, attempts.size)
+        assertEquals(first, attempts[0])
+        assertEquals(FIRST_RETRY, attempts[1] - attempts[0], "the retry kept the earlier streak's longer wait")
+        assertEquals(2, writes.size)
+    }
+
+    // --- the AtomicFile write ------------------------------------------------------------------
+
+    @Test
+    fun `an AtomicFile write that completes saves the bytes and leaves nothing beside them`() {
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile())
+
+        ShizukuConfigManager.writeAtomically(file.mock, "{\"version\":1}".toByteArray())
+
+        assertEquals("{\"version\":1}", file.base.readText())
+        assertEquals(listOf("shizuku.json"), dir.toFile().list()!!.sorted())
+    }
+
+    @Test
+    fun `an AtomicFile rename that fails is reported and the previous config is kept`() {
+        // AtomicFile.finishWrite on API 30+ only logs a failed rename of the new file into place.
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile()).apply { renameFails = 1 }
+        file.base.writeText("old")
+
+        assertThrows<IOException> { ShizukuConfigManager.writeAtomically(file.mock, "new config".toByteArray()) }
+
+        assertEquals("old", file.base.readText())
+        assertEquals(listOf("shizuku.json"), dir.toFile().list()!!.sorted(), "the new file was left behind")
+    }
+
+    @Test
+    fun `an AtomicFile backup left in place before API 30 is reported`() {
+        // Before API 30, finishWrite only logs a failed close and then keeps the backup, which
+        // AtomicFile reads in place of the base file.
+        every { ShizukuConfigManager.sdkInt() } returns 29
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile(), pre30 = true).apply { closeFails = 1 }
+        file.base.writeText("old")
+
+        assertThrows<IOException> { ShizukuConfigManager.writeAtomically(file.mock, "new config".toByteArray()) }
+
+        assertEquals("old", file.backup.readText())
+    }
+
+    @Test
+    fun `before API 30 a new file the write does not use does not fail it`() {
+        every { ShizukuConfigManager.sdkInt() } returns 29
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile(), pre30 = true)
+        File(file.newFile, "x").apply { parentFile.mkdirs() }.writeText("")
+
+        ShizukuConfigManager.writeAtomically(file.mock, "new config".toByteArray())
+
+        assertEquals("new config", file.base.readText())
+    }
+
+    @Test
+    fun `a saved config gets mode 0660 and group shell`() {
+        mockkStatic(Os::class)
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile())
+
+        ShizukuConfigManager.saveConfig(file.mock, "new config".toByteArray())
+
+        verify { Os.chmod(file.base.absolutePath, MODE_0660) }
+        verify { Os.chown(file.base.absolutePath, -1, SHELL_UID) }
+    }
+
+    @Test
+    fun `a config left by a write that failed its check still gets mode 0660 and group shell`() {
+        // Before API 30 the base is a file the write created even when the check after
+        // finishWrite fails, so it must not keep the mode it was created with.
+        every { ShizukuConfigManager.sdkInt() } returns 29
+        mockkStatic(Os::class)
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile(), pre30 = true).apply { closeFails = 1 }
+        file.base.writeText("old")
+
+        assertThrows<IOException> { ShizukuConfigManager.saveConfig(file.mock, "new config".toByteArray()) }
+
+        verify { Os.chmod(file.base.absolutePath, MODE_0660) }
+        verify { Os.chown(file.base.absolutePath, -1, SHELL_UID) }
+    }
+
+    @Test
+    fun `a mode change that fails does not fail a saved config`() {
+        mockkStatic(Os::class)
+        every { Os.chmod(any(), any()) } throws RuntimeException("chmod")
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile())
+
+        ShizukuConfigManager.saveConfig(file.mock, "new config".toByteArray())
+
+        assertEquals("new config", file.base.readText())
+    }
+
+    @Test
+    fun `an AtomicFile write that fails before finishing is reported and abandoned`() {
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile()).apply { writeFails = true }
+
+        assertThrows<IOException> { ShizukuConfigManager.writeAtomically(file.mock, "new config".toByteArray()) }
+
+        assertEquals(1, file.failed, "the write was not abandoned through failWrite")
+        assertEquals(0, file.finished, "a write that failed was finished")
+        assertEquals(emptyList(), dir.toFile().list()!!.toList())
+    }
+
+    @Test
+    fun `an AtomicFile that cannot start a write is reported`() {
+        val file = FakeAtomicFile(dir.resolve("shizuku.json").toFile())
+        every { file.mock.startWrite() } throws IOException("No space left on device")
+
+        assertThrows<IOException> { ShizukuConfigManager.writeAtomically(file.mock, "new config".toByteArray()) }
+    }
+
     // --- exit ----------------------------------------------------------------------------------
 
     @Test
@@ -312,7 +614,7 @@ class ConfigWriteTimingTest {
         val manager = mockk<ShizukuConfigManager>()
         every { manager.flushPendingWrite() } answers {
             order.add("flush")
-            Unit
+            true
         }
         val service = serviceExitingInto(order)
         setConfigManager(service, manager)
@@ -333,6 +635,22 @@ class ConfigWriteTimingTest {
         service.exit()
 
         assertEquals(listOf("exit 0"), order)
+    }
+
+    @Test
+    fun `an exit still ends the server when the flush reports the change not saved`() {
+        val order = Collections.synchronizedList(mutableListOf<String>())
+        val manager = mockk<ShizukuConfigManager>()
+        every { manager.flushPendingWrite() } answers {
+            order.add("flush")
+            false
+        }
+        val service = serviceExitingInto(order)
+        setConfigManager(service, manager)
+
+        service.exit()
+
+        assertEquals(listOf("flush", "exit 0"), order)
     }
 
     @Test
@@ -381,7 +699,7 @@ class ConfigWriteTimingTest {
         val manager = mockk<ShizukuConfigManager>()
         every { manager.flushPendingWrite() } answers {
             order.add("flush")
-            Unit
+            true
         }
         val service = serviceExitingInto(order)
         setConfigManager(service, manager)
@@ -398,7 +716,7 @@ class ConfigWriteTimingTest {
         val manager = mockk<ShizukuConfigManager>()
         every { manager.flushPendingWrite() } answers {
             stuck.await(10, TimeUnit.SECONDS)
-            Unit
+            true
         }
         val service = serviceExitingInto(order)
         every { ShizukuService.exitFlushTimeoutMillis() } returns EXIT_BOUND
@@ -449,6 +767,68 @@ class ConfigWriteTimingTest {
 
     // --- helpers -------------------------------------------------------------------------------
 
+    /**
+     * An AtomicFile (a stub in unit tests) over a real file that behaves as the framework's does.
+     * On API 30+ a write goes to a ".new" file that finishWrite renames into place; before API 30
+     * startWrite moves the base to ".bak", the base is written in place, finishWrite deletes the
+     * backup and failWrite puts it back. A failed rename or close is only logged by the
+     * framework, so here it is silent.
+     */
+    private class FakeAtomicFile(val base: File, val pre30: Boolean = false) {
+        val newFile = File(base.path + ".new")
+        val backup = File(base.path + ".bak")
+        /** How many of the next finishWrite calls do not rename the new file into place (API 30+). */
+        var renameFails = 0
+        /** How many of the next finishWrite calls fail to close, which keeps the backup (before API 30). */
+        var closeFails = 0
+        /** The stream throws on write, as a full disk does. */
+        var writeFails = false
+        var finished = 0
+        var failed = 0
+
+        val mock = mockk<AtomicFile>().also { file ->
+            every { file.baseFile } returns base
+            every { file.startWrite() } answers {
+                val target = if (pre30) {
+                    if (base.exists()) {
+                        if (!backup.exists()) base.renameTo(backup) else base.delete()
+                    }
+                    base
+                } else {
+                    newFile
+                }
+                if (writeFails) {
+                    object : FileOutputStream(target) {
+                        override fun write(b: ByteArray) = throw IOException("No space left on device")
+                    }
+                } else {
+                    FileOutputStream(target)
+                }
+            }
+            every { file.finishWrite(any()) } answers {
+                finished++
+                firstArg<FileOutputStream>().close()
+                if (pre30) {
+                    if (closeFails > 0) closeFails-- else backup.delete()
+                } else {
+                    if (renameFails > 0) renameFails-- else newFile.renameTo(base)
+                }
+                Unit
+            }
+            every { file.failWrite(any()) } answers {
+                failed++
+                firstArg<FileOutputStream>().close()
+                if (pre30) {
+                    base.delete()
+                    backup.renameTo(base)
+                } else {
+                    newFile.delete()
+                }
+                Unit
+            }
+        }
+    }
+
     private fun start() = ShizukuConfigManager()
 
     /** Runs every posted runnable due within [ms] from now, in order, and moves the clock on. */
@@ -493,6 +873,11 @@ class ConfigWriteTimingTest {
     private companion object {
         const val APP_UID = 10_123
         const val OTHER_UID = 10_124
+        const val THIRD_UID = 10_125
+        const val MINUTE = 60_000L
+        const val FIRST_RETRY = 1_000L
+        const val MODE_0660 = 0b110_110_000
+        const val SHELL_UID = 2000
         const val BATCH_DELAY = 10_000L
         const val SERVER_PID = 4242
         const val EXIT_BOUND = 150L
