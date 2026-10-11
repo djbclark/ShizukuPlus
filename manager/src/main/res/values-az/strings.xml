@@ -185,17 +185,17 @@
     <string name="doctor_status_samsung_sleeping_apps">Baxış tələb olunur (Yuxuda olan Tətbiqləri Yoxlayın)</string>
     <string name="doctor_status_su_bridge_path_set">ixrac edilən yol təyin edilib</string>
     <string name="doctor_status_su_bridge_no_path">İxrac edilən yol konfiqurasiya edilməyib</string>
-    <string name="doctor_tip_oneui8_max_restrictions">One UI 8+: Avto Bloklayıcıdakı 'Maksimum Məhdudiyyətlər' ADB-ni söndürür. Shizuku-nu işlətmək üçün onu söndürün.</string>
+    <string name="doctor_tip_oneui8_max_restrictions">One UI 8+: Avto Bloklayıcıdakı \'Maksimum Məhdudiyyətlər\' ADB-ni söndürür. Shizuku-nu işlətmək üçün onu söndürün.</string>
     <string name="doctor_tip_su_bridge_a16">Android 16+ ADB shell-dən /data/local/tmp-yə yazmağı məhdudlaşdırır. Root Uyğunluq Mərkəzini açın və cihazınızda işləyən SU Körpüsü yolunu təyin etmək üçün "İxrac et" düyməsinə toxunun.</string>
-    <string name="doctor_tip_samsung_autoblocker"><b>Samsung Avto Bloklayıcı</b>: Onun <b>SÖNDÜRÜLDÜYÜNDƏN</b> və ya 'Maksimum Məhdudiyyətlər'in deaktiv edildiyindən əmin olun. O, One UI 7/8+ versiyalarında ADB əmrlərini səssizcə bloklayır.</string>
+    <string name="doctor_tip_samsung_autoblocker"><b>Samsung Avto Bloklayıcı</b>: Onun <b>SÖNDÜRÜLDÜYÜNDƏN</b> və ya \'Maksimum Məhdudiyyətlər\'in deaktiv edildiyindən əmin olun. O, One UI 7/8+ versiyalarında ADB əmrlərini səssizcə bloklayır.</string>
     <string name="doctor_tip_oneui_connectivity"><b>One UI 7/8 Bağlantısı</b>: Simsiz Cütləşdirmə uğursuz olarsa, Shizuku+ və Tərtibatçı Seçimlərini eyni vaxtda açaraq <b>Bölünmüş Ekran rejimindən</b> üçün istifadə etməyə çalışın.</string>
     <string name="doctor_tip_s22_ultra"><b>S22 Ultra Məsləhəti</b>: Sabit ADB bağlantısı üçün, kəsilmələr baş verərsə `*#0808#` yığın və `MTP + ADB` rejimini seçin.</string>
     <string name="doctor_tip_secure_folder"><b>Təhlükəsiz Qovluq Aşkar Edildi</b>: Shizuku+ ən yaxşı Əsas İstifadəçidə (Sahib) işləyir. Təhlükəsiz Qovluq və ya İş Profilində işlətmək serverin əvvəlcə Əsas İstifadəçidən başladılmasını tələb edə bilər.</string>
-    <string name="doctor_tip_phantom_process"><b>Fantom Proses Qatili</b>: Android 12-15+ həddən çox əmr icra edildikdə Shizuku+-u sonlandıra bilər. 'Düzəlt' düyməsi bu məhdudiyyəti söndürməyə çalışır.</string>
-    <string name="doctor_tip_samsung_optimization"><b>Samsung Avto-Optimallaşdırma</b>: Shizuku+-un gecə vaxtı sonlandırılmasının qarşısını almaq üçün Cihaz Qayğısında 'Avtomatik Yenidən Başlat'ı söndürün.</string>
-    <string name="doctor_tip_samsung_sleeping"><b>Samsung Yuxuda olan Tətbiqlər</b>: Düzəlt düyməsinə toxunmaq birbaşa <b>'Heç vaxt yuxuya getməyən tətbiqlər'</b> siyahısını açır. <b>+</b> düyməsinə toxunun və Samsung-un arxa plan xidmətini dondurmasının qarşısını almaq üçün Shizuku+-u əlavə edin.</string>
-    <string name="doctor_tip_s22_ultra_exynos"><b>S22 Ultra (Exynos)</b>: Xidmət cavabı ləngdirsə, Cihaz Qayğısı > Yaddaş bölməsindən <b>'RAM Plus'</b>ı söndürməyə çalışın.</string>
-    <string name="doctor_tip_s22_ultra_snapdragon"><b>S22 Ultra (Snapdragon)</b>: Maksimum əmr ötürmə qabiliyyəti üçün Cəld Tənzimləmələrdə 'Təkmilləşdirilmiş Emal'ın aktiv olduğundan əmin olun.</string>
+    <string name="doctor_tip_phantom_process"><b>Fantom Proses Qatili</b>: Android 12-15+ həddən çox əmr icra edildikdə Shizuku+-u sonlandıra bilər. \'Düzəlt\' düyməsi bu məhdudiyyəti söndürməyə çalışır.</string>
+    <string name="doctor_tip_samsung_optimization"><b>Samsung Avto-Optimallaşdırma</b>: Shizuku+-un gecə vaxtı sonlandırılmasının qarşısını almaq üçün Cihaz Qayğısında \'Avtomatik Yenidən Başlat\'ı söndürün.</string>
+    <string name="doctor_tip_samsung_sleeping"><b>Samsung Yuxuda olan Tətbiqlər</b>: Düzəlt düyməsinə toxunmaq birbaşa <b>\'Heç vaxt yuxuya getməyən tətbiqlər\'</b> siyahısını açır. <b>+</b> düyməsinə toxunun və Samsung-un arxa plan xidmətini dondurmasının qarşısını almaq üçün Shizuku+-u əlavə edin.</string>
+    <string name="doctor_tip_s22_ultra_exynos"><b>S22 Ultra (Exynos)</b>: Xidmət cavabı ləngdirsə, Cihaz Qayğısı > Yaddaş bölməsindən <b>\'RAM Plus\'</b>ı söndürməyə çalışın.</string>
+    <string name="doctor_tip_s22_ultra_snapdragon"><b>S22 Ultra (Snapdragon)</b>: Maksimum əmr ötürmə qabiliyyəti üçün Cəld Tənzimləmələrdə \'Təkmilləşdirilmiş Emal\'ın aktiv olduğundan əmin olun.</string>
     <string name="doctor_system_well_configured">Sisteminiz Shizuku+ üçün yaxşı konfiqurasiya edilib.</string>
 
     <!-- Root Compatibility -->
@@ -590,22 +590,22 @@
     <string name="settings_root_magisk_mocking">Magisk Mühiti Simulyasiyası</string>
     <string name="settings_root_magisk_mocking_summary">Root aşkar edən tətbiqləri aldatmaq üçün Magisk binarlarını, xassələrini və daxili qovluqlarını saxtalaşdırır.</string>
     <string name="settings_root_auto_grant">Avto-Təsdiqləmə Körpüsü</string>
-    <string name="settings_root_auto_grant_summary">WRITE_SECURE_SETTINGS kimi həssas icazələr üçün 'pm grant' sorğularını avtomatik təsdiqləyir.</string>
+    <string name="settings_root_auto_grant_summary">WRITE_SECURE_SETTINGS kimi həssas icazələr üçün \'pm grant\' sorğularını avtomatik təsdiqləyir.</string>
     <string name="settings_root_file_interceptor">Ağıllı Fayl Tutucusu</string>
     <string name="settings_root_file_interceptor_summary">Həssas sistem yollarını hədəfləyən fayl əməliyyatlarına icazələrin qorunması bayraqlarını avtomatik daxil edir.</string>
     <string name="settings_root_busybox_mocking">BusyBox Simulyasiyası</string>
-    <string name="settings_root_busybox_mocking_summary">Köhnə skript tələblərini ödəmək üçün 'busybox' əmri üçün saxta versiya mətni qaytarır.</string>
+    <string name="settings_root_busybox_mocking_summary">Köhnə skript tələblərini ödəmək üçün \'busybox\' əmri üçün saxta versiya mətni qaytarır.</string>
     <string name="help_root_magisk_title">Magisk Simulyasiyası Haqqında</string>
     <string name="help_root_magisk_detail">Çox tətbiq Magisk-ə xüsusi xassələri və ya /sbin/.magisk qovluğunu axtararaq root-u yoxlayır. Bu modul bu elementləri simulyasiya edərək, Magisk mühitini aşkar etmədən açılmaqdan imtina edən tətbiqlərdə yalnız root üçün olan funksiyalardan istifadə etməyinizə imkan verir.</string>
 
     <string name="help_root_auto_grant_title">Avto-Təsdiqləmə Haqqında</string>
-    <string name="help_root_auto_grant_detail">Köhnə root tətbiqləri tez-tez shell vasitəsilə özlərinə icazə verməyə çalışırlar. Bu körpü bu 'pm grant' çağırışlarını dinləyir və əllə icazə idarəetməsindən qaçınaraq onları anında təsdiqləmək üçün Shizuku-nun yüksək imtiyazlarından istifadə edir.</string>
+    <string name="help_root_auto_grant_detail">Köhnə root tətbiqləri tez-tez shell vasitəsilə özlərinə icazə verməyə çalışırlar. Bu körpü bu \'pm grant\' çağırışlarını dinləyir və əllə icazə idarəetməsindən qaçınaraq onları anında təsdiqləmək üçün Shizuku-nun yüksək imtiyazlarından istifadə edir.</string>
 
     <string name="help_root_file_interceptor_title">Fayl Tutucusu Haqqında</string>
     <string name="help_root_file_interceptor_detail">Tətbiqlər standart shell istifadə edərək faylları /data/data/-yə kopyalayarkən, tez-tez mülkiyyət və SELinux kontekstlərini itirirlər. Bu modul fayl bütövlüyünü qorumaq və tətbiq qəzalarının qarşısını almaq üçün avtomatik olaraq --preserve=all kimi bayraqlar əlavə edir.</string>
 
     <string name="help_root_busybox_title">BusyBox Simulyasiyası Haqqında</string>
-    <string name="help_root_busybox_detail">BusyBox root olunmuş cihazlarda yayğın olan Unix kommunal xidmətləri dəstidir. Bəzi köhnə root tətbiqləri öz məntiqlərini işlətməzdən əvvəl onun mövcudluğunu yoxlayır. Bu modul 'busybox' əmri üçün simulyasiya edilmiş uğurlu cavab qaytarır.</string>
+    <string name="help_root_busybox_detail">BusyBox root olunmuş cihazlarda yayğın olan Unix kommunal xidmətləri dəstidir. Bəzi köhnə root tətbiqləri öz məntiqlərini işlətməzdən əvvəl onun mövcudluğunu yoxlayır. Bu modul \'busybox\' əmri üçün simulyasiya edilmiş uğurlu cavab qaytarır.</string>
 
     <string name="settings_hide_disabled_plus_features">Söndürülmüş Plus Funksiyalarını Gizlət</string>
     <string name="settings_hide_disabled_plus_features_summary">Bu cihazda və ya konfiqurasiyada mövcud olmayan Plus funksiyalarını gizlədin</string>
@@ -636,15 +636,15 @@
     <string name="settings_force_start_wadb">WADB üçün Wi-Fi yoxlamasını yan keç</string>
     <string name="settings_force_start_wadb_summary">Wi-Fi kəsilsa belə Shizuku-nu ADB TCP vasitəsilə başlatmağa cəhd edin. Yerli loopback və ya mobil data ADB üçün faydalıdır.</string>
     <string name="settings_fake_su">SU Körpüsü (su örtüyü)</string>
-    <string name="settings_fake_su_summary">Xüsusi yolları dəstəkləyən köhnə root tətbiqləri üçün Shizuku ilə dəstəklənən 'su' binarı təmin edin.</string>
+    <string name="settings_fake_su_summary">Xüsusi yolları dəstəkləyən köhnə root tətbiqləri üçün Shizuku ilə dəstəklənən \'su\' binarı təmin edin.</string>
     <string name="settings_root_integration_hub">Root İnteqrasiya Mərkəzi</string>
     <string name="settings_root_integration_hub_summary">Shizuku+ imtiyazları ilə işləmək üçün root tətbiqlərini konfiqurasiya edin və idarə edin.</string>
     <string name="settings_root_compatibility_hub">Root Uyğunluq Mərkəzi</string>
     <string name="settings_root_compatibility_hub_summary">Shizuku+ imtiyazları ilə işləmək üçün root tətbiqlərini konfiqurasiya edin və idarə edin.</string>
     <string name="su_bridge_title">SU Körpüsü</string>
-    <string name="su_bridge_description">Xüsusi 'su' binarı yaradaraq Shizuku-nu dəstəkləməyən tətbiqlərə root çıxışı təmin edin.</string>
+    <string name="su_bridge_description">Xüsusi \'su\' binarı yaradaraq Shizuku-nu dəstəkləməyən tətbiqlərə root çıxışı təmin edin.</string>
     <string name="su_bridge_suggested_apps">Təklif Edilən Tətbiqlər</string>
-    <string name="su_bridge_suggested_apps_desc">Bu tətbiqlər xüsusi SU yollarını dəstəkləyir. Onları ixrac etdiyiniz 'su' skriptinə yönəldin.</string>
+    <string name="su_bridge_suggested_apps_desc">Bu tətbiqlər xüsusi SU yollarını dəstəkləyir. Onları ixrac etdiyiniz \'su\' skriptinə yönəldin.</string>
     <string name="su_bridge_global_config_title">Qlobal Konfiqurasiya</string>
     <string name="su_bridge_global_config_desc">SU körpü skripti üçün xüsusi bir yol təyin edin. Tətbiqlər root istədikdə bu yolu icra edəcək.</string>
     <string name="su_bridge_setup_all">Hamısını Quraşdırın</string>
@@ -664,7 +664,7 @@
     <string name="su_bridge_how_to_use">İstifadə qaydası:</string>
     <string name="su_bridge_step_1">1. Əsas ekrandan Shizuku fayllarını ixrac edin.</string>
     <string name="su_bridge_step_2">2. Root tətbiqinizdə tənzimləmələrdən "SU Path" və ya "Binary Path"i axtarın.</string>
-    <string name="su_bridge_step_3">3. Onu ixrac edilmiş 'su' faylının yoluna dəyişdirin.</string>
+    <string name="su_bridge_step_3">3. Onu ixrac edilmiş \'su\' faylının yoluna dəyişdirin.</string>
     <string name="su_bridge_step_4">4. Xüsusi yol tənzimləməsi olmayan tətbiqlər üçün Shizuku+ tənzimləmələrində "SU Körpüsü"nü aktivləşdirin. Bu, bir çox köhnə su çağırışlarını avtomatik olaraq yönləndirir.</string>
     <string name="su_bridge_app_instruction">Tənzimləmələr > %s bölməsində yolu təyin edin</string>
     <string name="su_bridge_path_label">İxrac edilmiş su yolu</string>
@@ -786,7 +786,7 @@
     <string name="su_bridge_cleanup_failed">SU Körpüsünü /data/local/tmp-dən silmək mümkün olmadı. Shizuku-nun işlədiyindən əmin olun.</string>
     <string name="su_bridge_deploy_success">SU Körpüsü /data/local/tmp-yə yerləşdirildi.</string>
     <string name="su_bridge_warning_wallet_title">Google Wallet Bildirişi</string>
-    <string name="su_bridge_warning_wallet_message">'su' binarını /data/local/tmp-yə yerləşdirmək və ya Magisk Simulyasiyasını aktivləşdirmək Google Play Xidmətlərində Android root aşkar edilməsini tətikləyir və bu da Google Wallet təmasız ödənişlərini söndürür. Wallet-i bərpa etmək üçün onu istənilən vaxt silə bilərsiniz.</string>
+    <string name="su_bridge_warning_wallet_message">\'su\' binarını /data/local/tmp-yə yerləşdirmək və ya Magisk Simulyasiyasını aktivləşdirmək Google Play Xidmətlərində Android root aşkar edilməsini tətikləyir və bu da Google Wallet təmasız ödənişlərini söndürür. Wallet-i bərpa etmək üçün onu istənilən vaxt silə bilərsiniz.</string>
 
     <!-- Snackbar -->
     <string name="snackbar_invalid_port">Port 1 və 65535 arasında olmalıdır</string>
@@ -828,7 +828,7 @@
     <string name="toast_shizuku_already_starting">Shizuku+ artıq arxa planda başlayır</string>
     <string name="toast_accessibility_tv_only">Bu avtomatlaşdırma TV və ya TLS dəstəyi olan Samsung One UI cihazları üçündür.</string>
     <string name="toast_pairing_timeout">Shizuku+ cütləşdirmə xidmətinin vaxtı bitdi</string>
-    <string name="toast_adb_ssl_error">Simsiz ADB əl sıxması uğursuz oldu (SSL protokol xətası). Xahiş olunur Tərtibatçı Seçimlərində 'ADB Açarını Sıfırla'dan istifadə edin və yenidən cəhd edin.</string>
+    <string name="toast_adb_ssl_error">Simsiz ADB əl sıxması uğursuz oldu (SSL protokol xətası). Xahiş olunur Tərtibatçı Seçimlərində \'ADB Açarını Sıfırla\'dan istifadə edin və yenidən cəhd edin.</string>
     <string name="adb_error_ssl_title">Bağlantı Xətası</string>
     <string name="adb_error_ssl_message">Simsiz ADB əl sıxması uğursuz oldu (SSL protokol xətası). Bu adətən ADB açarları korlandıqda baş verir. Tərtibatçı Seçimlərində onları sıfırlamaq istərdinizmi?</string>
     <string name="adb_error_ssl_button_reset">Tərtibatçı Seçimlərinə Keç</string>
