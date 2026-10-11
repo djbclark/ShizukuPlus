@@ -4,7 +4,7 @@ import static rikka.shizuku.server.ServerConstants.PERMISSION;
 
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.os.Build;
+import android.os.Handler;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.util.AtomicFile;
@@ -41,7 +41,19 @@ public class ShizukuConfigManager extends ConfigManager {
             .setVersion(ShizukuConfig.LATEST_VERSION)
             .create();
 
+    /**
+     * How long a batched write waits, so that start-up, which can change many entries at once,
+     * writes them together. A change the user makes is written at once instead
+     * ({@link #scheduleWriteLocked(boolean)}).
+     */
     private static final long WRITE_DELAY = 10 * 1000;
+
+    /** No write is waiting. */
+    private static final int WRITE_NONE = 0;
+    /** A write is posted to run after {@link #WRITE_DELAY}. */
+    private static final int WRITE_DELAYED = 1;
+    /** A write is posted to run next on the worker. */
+    private static final int WRITE_PROMPT = 2;
 
     private static final File FILE = getConfigFile();
     private static final AtomicFile ATOMIC_FILE = new AtomicFile(FILE);
@@ -85,7 +97,8 @@ public class ShizukuConfigManager extends ConfigManager {
         return new ShizukuConfig();
     }
 
-    public static void write(ShizukuConfig config) {
+    /** Writes {@code json} as the config; the caller serializes it. A seam for tests. */
+    static void writeJson(String json) {
         synchronized (ATOMIC_FILE) {
             FileOutputStream stream;
             try {
@@ -96,7 +109,6 @@ public class ShizukuConfigManager extends ConfigManager {
             }
 
             try {
-                String json = GSON_OUT.toJson(config);
                 stream.write(json.getBytes());
 
                 ATOMIC_FILE.finishWrite(stream);
@@ -122,15 +134,54 @@ public class ShizukuConfigManager extends ConfigManager {
         }
     }
 
+    /**
+     * Writes a change still waiting for the worker now, on the calling thread; does nothing when
+     * none is waiting. Called before the server exits, which would otherwise lose it.
+     */
+    void flushPendingWrite() {
+        writePending();
+    }
+
+    /**
+     * Writes the config if a change is waiting. The config is serialized under this object's lock,
+     * which every change holds, and written under ATOMIC_FILE's, held across both so that two
+     * writes (the worker's and an exit's flush) cannot reach the disk in the other order. Nothing
+     * takes ATOMIC_FILE while holding this object's lock.
+     */
+    private void writePending() {
+        synchronized (ATOMIC_FILE) {
+            String json;
+            synchronized (this) {
+                // Checked first: a flush with nothing waiting does not start the worker thread.
+                if (pendingWrite == WRITE_NONE) {
+                    return;
+                }
+                HandlerKt.getWorkerHandler().removeCallbacks(mWriteRunner);
+                // Cleared before serializing: a change after this posts a write of its own.
+                pendingWrite = WRITE_NONE;
+                try {
+                    json = GSON_OUT.toJson(config);
+                } catch (Throwable tr) {
+                    LOGGER.e(tr, "can't save %s", ATOMIC_FILE.getBaseFile());
+                    return;
+                }
+            }
+            writeJson(json);
+        }
+    }
+
     private final Runnable mWriteRunner = new Runnable() {
 
         @Override
         public void run() {
-            write(config);
+            writePending();
         }
     };
 
     private final ShizukuConfig config;
+
+    /** WRITE_NONE, WRITE_DELAYED or WRITE_PROMPT: the write posted to the worker, if any. */
+    private int pendingWrite = WRITE_NONE;
 
     public ShizukuConfigManager() {
         this.config = load();
@@ -252,19 +303,36 @@ public class ShizukuConfigManager extends ConfigManager {
         }
 
         if (changed) {
-            scheduleWriteLocked();
+            // Start-up: one write for everything above. Under the lock, as the worker reads
+            // pendingWrite under it.
+            synchronized (this) {
+                scheduleWriteLocked(false);
+            }
         }
     }
 
-    private void scheduleWriteLocked() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (HandlerKt.getWorkerHandler().hasCallbacks(mWriteRunner)) {
-                return;
-            }
-        } else {
-            HandlerKt.getWorkerHandler().removeCallbacks(mWriteRunner);
+    /**
+     * Posts a write of the config to the worker: at once when {@code prompt} (a change the user
+     * made, which a stop or restart soon after must not lose), otherwise after
+     * {@link #WRITE_DELAY} (start-up's bulk changes, which the next start works out again). A
+     * prompt write brings a delayed one forward; either one already posted covers a delayed
+     * request. Each write saves the whole config, so one write covers every change before it.
+     * The pending state is kept in a field rather than read from Handler.hasCallbacks, which
+     * needs API 29, so it behaves the same on every API level.
+     */
+    private void scheduleWriteLocked(boolean prompt) {
+        if (pendingWrite == WRITE_PROMPT || (pendingWrite == WRITE_DELAYED && !prompt)) {
+            return;
         }
-        HandlerKt.getWorkerHandler().postDelayed(mWriteRunner, WRITE_DELAY);
+        Handler handler = HandlerKt.getWorkerHandler();
+        if (prompt) {
+            handler.removeCallbacks(mWriteRunner);
+            handler.post(mWriteRunner);
+            pendingWrite = WRITE_PROMPT;
+        } else {
+            handler.postDelayed(mWriteRunner, WRITE_DELAY);
+            pendingWrite = WRITE_DELAYED;
+        }
     }
 
     private ShizukuConfig.PackageEntry findLocked(int uid) {
@@ -303,12 +371,18 @@ public class ShizukuConfigManager extends ConfigManager {
 
     public void markPermGrantMigrationDone() {
         synchronized (this) {
+            if (config.permGrantMigrationDone) {
+                return;
+            }
             config.permGrantMigrationDone = true;
-            scheduleWriteLocked();
+            // Written at once: if it were lost, the next start would run the one-time migration
+            // again and re-grant a permission the user has since revoked (#568).
+            scheduleWriteLocked(true);
         }
     }
 
-    private void updateLocked(int uid, List<String> packages, int mask, int values) {
+    /** Applies the change; true when the config changed. The caller schedules the write. */
+    private boolean updateLocked(int uid, List<String> packages, int mask, int values) {
         ShizukuConfig.PackageEntry entry = findLocked(uid);
         if (entry == null) {
             entry = new ShizukuConfig.PackageEntry(uid, mask & values);
@@ -316,7 +390,7 @@ public class ShizukuConfigManager extends ConfigManager {
         } else {
             int newValue = (entry.flags & ~mask) | (mask & values);
             if (newValue == entry.flags) {
-                return;
+                return false;
             }
             entry.flags = newValue;
         }
@@ -328,12 +402,15 @@ public class ShizukuConfigManager extends ConfigManager {
                 entry.packages.add(packageName);
             }
         }
-        scheduleWriteLocked();
+        return true;
     }
 
     public void update(int uid, List<String> packages, int mask, int values) {
         synchronized (this) {
-            updateLocked(uid, packages, mask, values);
+            if (updateLocked(uid, packages, mask, values)) {
+                // The user's change: written at once, on the worker.
+                scheduleWriteLocked(true);
+            }
         }
     }
 
@@ -343,7 +420,8 @@ public class ShizukuConfigManager extends ConfigManager {
             return;
         }
         config.packages.remove(entry);
-        scheduleWriteLocked();
+        // A removal ends a grant, so it is written at once.
+        scheduleWriteLocked(true);
     }
 
     public void remove(int uid) {

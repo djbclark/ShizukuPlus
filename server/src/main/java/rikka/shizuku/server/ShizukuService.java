@@ -286,15 +286,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     public ShizukuService() {
         super();
 
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            LOGGER.e(throwable, "Uncaught exception in server thread " + thread.getName());
-            try {
-                // Give some time for the event to be dispatched before the process dies
-                Thread.sleep(500);
-            } catch (Throwable ignored) {
-            }
-            System.exit(1);
-        });
+        Thread.setDefaultUncaughtExceptionHandler(this::onUncaughtException);
 
         HandlerUtil.setMainHandler(mainHandler);
 
@@ -335,7 +327,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         ApkChangedObservers.start(ai.sourceDir, () -> {
             if (getManagerApplicationInfo() == null) {
                 LOGGER.w("manager app is uninstalled in user 0, exiting...");
-                System.exit(ServerConstants.MANAGER_APP_NOT_FOUND);
+                saveConfigAndExit(ServerConstants.MANAGER_APP_NOT_FOUND);
             }
         });
 
@@ -556,7 +548,76 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     public void exit() {
         enforceManagerPermission("exit");
         LOGGER.i("exit");
-        System.exit(0);
+        saveConfigAndExit(0);
+    }
+
+    /** The default uncaught-exception handler, installed first thing in the constructor. */
+    void onUncaughtException(Thread thread, Throwable throwable) {
+        LOGGER.e(throwable, "Uncaught exception in server thread " + thread.getName());
+        try {
+            // Give some time for the event to be dispatched before the process dies
+            Thread.sleep(500);
+        } catch (Throwable ignored) {
+        }
+        // configManager is null until the constructor assigns it; until then the only write that
+        // can be waiting is start-up's batch, which the next start works out again.
+        saveConfigAndExit(1);
+    }
+
+    /** How long an exit waits for the config write before it goes ahead without it. */
+    private static final long EXIT_FLUSH_TIMEOUT_MS = 2000;
+
+    /**
+     * Writes a config change still waiting for the worker, then exits. The worker writes a change
+     * the user made at once, but one made just before an exit can still be in its queue, and
+     * System.exit (or the starter killing this process for a restart) would drop it. The write
+     * runs on a thread of its own and the exit waits for it for at most
+     * {@link #exitFlushTimeoutMillis()}, as it can wait on a write in progress or on the config
+     * manager's lock, and an exit, the crash path's above all, must not hang on either. A write
+     * that fails or does not finish in time is logged and the exit goes ahead.
+     */
+    private void saveConfigAndExit(int status) {
+        ShizukuConfigManager config = configManager;
+        if (config != null) {
+            flushBeforeExit(config, exitFlushTimeoutMillis());
+        }
+        exitProcess(status);
+    }
+
+    /** Runs {@code config}'s flush on a thread of its own and waits for it for at most {@code timeoutMs}. */
+    private static void flushBeforeExit(ShizukuConfigManager config, long timeoutMs) {
+        Thread flush = new Thread(() -> {
+            try {
+                config.flushPendingWrite();
+            } catch (Throwable t) {
+                LOGGER.w(t, "cannot write the config before exiting");
+            }
+        }, "config-flush");
+        flush.setDaemon(true);
+        try {
+            flush.start();
+        } catch (Throwable t) {
+            LOGGER.w(t, "cannot start the config write before exiting");
+            return;
+        }
+        try {
+            flush.join(timeoutMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (flush.isAlive()) {
+            LOGGER.w("the config write did not finish within %d ms; exiting without waiting for it", timeoutMs);
+        }
+    }
+
+    /** {@link #EXIT_FLUSH_TIMEOUT_MS}; a seam, so tests need not wait for it. */
+    static long exitFlushTimeoutMillis() {
+        return EXIT_FLUSH_TIMEOUT_MS;
+    }
+
+    /** System.exit; a seam, so tests can follow an exit path without ending the test JVM. */
+    static void exitProcess(int status) {
+        System.exit(status);
     }
 
     @Override
