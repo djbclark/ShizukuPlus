@@ -18,7 +18,7 @@ object LiveActivityNotificationManager {
 
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
             val channel =
                 NotificationChannel(
                     CHANNEL_ID,
@@ -67,12 +67,12 @@ object LiveActivityNotificationManager {
             WatchdogService.updateLiveStatus(context, status)
             return
         }
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         manager.notify(NOTIFICATION_ID, buildNotification(context, status))
     }
 
     fun dismiss(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
         manager.cancel(NOTIFICATION_ID)
         if (WatchdogService.isRunning()) {
             WatchdogService.updateLiveStatus(context, null)

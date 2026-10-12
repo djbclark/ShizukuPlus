@@ -246,16 +246,8 @@ class BehaviorSettingsFragment :
         findPreference<TwoStatePreference>(KEY_LIVE_ACTIVITY_ENABLED)?.setOnPreferenceChangeListener { _, newValue ->
             val enable = newValue as Boolean
             val ctx = requireContext()
-            val svcIntent = Intent(ctx, ShizukuLiveService::class.java)
-            if (enable) {
-                if (!ShizukuSettings.getWatchdog() && !WatchdogService.isRunning()) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        ctx.startForegroundService(svcIntent)
-                    } else {
-                        ctx.startService(svcIntent)
-                    }
-                }
-            } else {
+            if (!enable) {
+                val svcIntent = Intent(ctx, ShizukuLiveService::class.java)
                 ctx.stopService(svcIntent)
                 LiveActivityNotificationManager.dismiss(ctx)
             }

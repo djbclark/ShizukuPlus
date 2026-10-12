@@ -284,9 +284,6 @@ class WatchdogService : Service() {
         const val WATCHDOG_CHANNEL_ID = "shizuku_watchdog"
         const val CRASH_CHANNEL_ID = "crash_reports"
 
-        /** How long a crash waits for a server restarted from outside the app to come back. */
-        const val RESTART_GRACE_MS = 10_000L
-
         /** How long a first restart waits for RUNNING before the crash heads-up is posted: a successful restart took ~11 s on an API 34 emulator, a loaded device's first start 32 s. A restart slower than this, or one that raises a fresh authorisation dialog answered later, still gets the heads-up — by design for now. */
         const val RECOVERY_WAIT_MS = 60_000L
 
@@ -297,6 +294,7 @@ class WatchdogService : Service() {
         private const val MAX_COOLDOWN_MS = 300_000L // 5 min cap
         private val isRunning = AtomicBoolean(false)
         private val runningListeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
+
         @Volatile private var currentLiveStatus: String? = null
 
         fun backoffMs(crashes: Int): Long =
@@ -325,7 +323,10 @@ class WatchdogService : Service() {
         }
 
         @JvmStatic
-        fun updateLiveStatus(context: Context, status: String?) {
+        fun updateLiveStatus(
+            context: Context,
+            status: String?,
+        ) {
             currentLiveStatus = status
             if (isRunning()) {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

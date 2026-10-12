@@ -739,21 +739,6 @@ class ShizukuApplication :
         try {
             initializeManagers()
             initPeerSettingsSync()
-            // When Watchdog is on, WatchdogService carries the live notification (1001)
-            if (!ShizukuSettings.getWatchdog() && ShizukuSettings.isLiveActivityEnabled()) {
-                try {
-                    // startForegroundService() is required on API 26+ to start from background;
-                    // plain startService() throws BackgroundServiceStartNotAllowedException on API 31+.
-                    val liveServiceIntent = Intent(this, af.shizuku.manager.service.ShizukuLiveService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(liveServiceIntent)
-                    } else {
-                        startService(liveServiceIntent)
-                    }
-                } catch (e: Exception) {
-                    Timber.w(e, "Failed to start ShizukuLiveService")
-                }
-            }
         } catch (e: Throwable) {
             Timber.e(e, "Failed to initialize managers")
             Sentry.captureException(e)

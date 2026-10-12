@@ -27,42 +27,15 @@ class ShizukuLiveService : Service() {
         super.onCreate()
 
         serviceScope.launch {
-            ShizukuStateMachine.asFlow().collect { state ->
-                val isRunning = state == ShizukuStateMachine.State.RUNNING
-                if (isRunning) {
-                    // The Watchdog owns the notification while it is on or running, so posting
-                    // 9999 here would leave a second persistent notification behind. Stop only
-                    // once onStartCommand has reached startForeground(): this collector is
-                    // posted to the main looper and can run before onStartCommand, and a
-                    // startForegroundService() start stopped before startForeground() crashes
-                    // the app on API 26+. Before that, onStartCommand makes the same check.
-                    if (ShizukuSettings.getWatchdog() || WatchdogService.isRunning()) {
-                        if (startCommandHandled) {
-                            removeForegroundNotification()
-                            stopSelf()
-                        }
-                        return@collect
-                    }
-                    val notif =
-                        LiveActivityNotificationManager.buildNotification(
-                            this@ShizukuLiveService,
-                            "System Bridge Active",
-                        )
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            startForeground(
-                                LiveActivityNotificationManager.NOTIFICATION_ID,
-                                notif,
-                                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-                            )
-                        } else {
-                            startForeground(LiveActivityNotificationManager.NOTIFICATION_ID, notif)
-                        }
-                    } catch (e: Throwable) {
-                        Timber.tag(TAG).w(e, "startForeground refused on state update")
-                    }
-                } else {
+            ShizukuStateMachine.asFlow().collect { _ ->
+                // Live activity is only shown inside the Watchdog's notification (1001).
+                // Stop only once onStartCommand has reached startForeground(): this collector is
+                // posted to the main looper and can run before onStartCommand, and a
+                // startForegroundService() start stopped before startForeground() crashes
+                // the app on API 26+. Before that, onStartCommand makes the same check.
+                if (startCommandHandled) {
                     removeForegroundNotification()
+                    stopSelf()
                 }
             }
         }
@@ -74,31 +47,25 @@ class ShizukuLiveService : Service() {
         startId: Int,
     ): Int {
         // startForeground() must be called within 5s of startForegroundService().
-        // Use current state for the initial notification; the flow in onCreate() will keep it updated.
+        // Use current state for the initial notification.
         val isRunning = ShizukuStateMachine.get() == ShizukuStateMachine.State.RUNNING
         val notif =
             LiveActivityNotificationManager.buildNotification(
                 this,
                 if (isRunning) "System Bridge Active" else "Monitoring...",
             )
-        // Even when the Watchdog owns the notification now, startForeground() must be reached
-        // first: a startForegroundService() start that stops without it crashes the app on
-        // API 26+ (ForegroundServiceDidNotStartInTimeException).
+        // startForeground() must be reached first: a startForegroundService() start that stops
+        // without it crashes the app on API 26+ (ForegroundServiceDidNotStartInTimeException).
         if (!startForegroundSafely(notif)) {
             stopSelf()
             return START_NOT_STICKY
         }
         startCommandHandled = true
-        if (ShizukuSettings.getWatchdog() || WatchdogService.isRunning()) {
-            removeForegroundNotification()
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        // If not running, remove the foreground notification immediately — service stays alive silently.
-        if (!isRunning) {
-            removeForegroundNotification()
-        }
-        return START_STICKY
+        // Live activity is only shown inside the Watchdog's notification (1001).
+        // With the Watchdog off (or on), there is no standalone notification: remove and stop.
+        removeForegroundNotification()
+        stopSelf()
+        return START_NOT_STICKY
     }
 
     private fun removeForegroundNotification() {
