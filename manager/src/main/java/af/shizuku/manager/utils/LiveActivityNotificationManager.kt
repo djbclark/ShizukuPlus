@@ -65,10 +65,7 @@ object LiveActivityNotificationManager {
     ) {
         if (ShizukuSettings.getWatchdog() || WatchdogService.isRunning()) {
             WatchdogService.updateLiveStatus(context, status)
-            return
         }
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        manager.notify(NOTIFICATION_ID, buildNotification(context, status))
     }
 
     fun dismiss(context: Context) {

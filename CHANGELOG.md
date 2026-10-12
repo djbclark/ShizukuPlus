@@ -31,7 +31,7 @@ All notable changes to ShizukuPlus are documented here. See [AI_ATTRIBUTIONS.md]
 - **Fixed compat hub card disappearing after a successful hub install** — `rebuildItems()` had an extra inner condition (`isCompanionModeEnabled() || needsAction`) inside the `ID_COMPANION` case that was not present for any other card type. This caused the compat hub card to be excluded from the item list once installed (both conditions false), even when the user had not hidden it. Removed the inner condition; the card now follows the standard hidden-set visibility logic shared by all other home cards.
 
 #### Manager App (Watchdog / Notifications)
-- **The Watchdog and live activity now share a single notification** — live activity is now shown in the Watchdog's notification instead of posting a second persistent notification. Turning the Watchdog off dismisses its notification and clears both.
+- **The Watchdog and live activity now share a single notification** — Live activity is now shown only in the Watchdog's notification, so it needs the Watchdog on. Turning the Watchdog off removes that notification.
 - **The Watchdog switch in Settings now shows the stored setting** — even when the service is stopped, the switch shows whether the Watchdog is enabled, and its summary updates live to say "On, not running right now" (e.g. after background start restrictions).
 - **A quick Watchdog recovery no longer posts a crash notification** — if the Watchdog restarts the server and it comes back within 60 seconds, the recovery is logged to the activity history without popping a heads-up crash notice. Repeated crashes within the stability window still post the notification.
 
