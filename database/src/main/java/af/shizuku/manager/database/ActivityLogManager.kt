@@ -68,6 +68,7 @@ interface ActivityLogSettings {
     fun getActivityLogRetention(): Int
     fun setActivityLogRetention(count: Int)
     fun showNotification(appName: String, action: String)
+    fun showWarningNotification(title: String, message: String)
 }
 
 /**
@@ -314,7 +315,7 @@ object ActivityLogManager {
                 database = ActivityLogDatabase.getInstance(storageContext)
                 dao = database?.activityLogDao()
 
-                settings?.showNotification("System Warning", "Activity log database corrupted. A backup was saved and a new DB created. You can attempt manual recovery in Developer Settings.")
+                settings?.showWarningNotification("System Warning", "Activity log database corrupted. A backup was saved and a new DB created. You can attempt manual recovery in Developer Settings.")
 
                 val recoveryRecord = ActivityLogRecord(
                     appName = "System",

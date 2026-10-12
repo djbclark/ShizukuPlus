@@ -15,6 +15,7 @@ import androidx.core.app.PendingIntentCompat
 object LiveActivityNotificationManager {
     private const val CHANNEL_ID = "live_activity_channel"
     const val NOTIFICATION_ID = 9999
+    const val NOTIFICATION_ID_WARNING = 9998
 
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -66,6 +67,35 @@ object LiveActivityNotificationManager {
         if (ShizukuSettings.getWatchdog() || WatchdogService.isRunning()) {
             WatchdogService.updateLiveStatus(context, status)
         }
+    }
+
+    fun showWarning(
+        context: Context,
+        title: String,
+        message: String,
+    ) {
+        ensureChannel(context)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val pendingIntent =
+            PendingIntentCompat.getActivity(
+                context,
+                0,
+                Intent(context, MainActivity::class.java),
+                0,
+                false,
+            )
+        val notification =
+            NotificationCompat
+                .Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification_icon)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+        manager.notify(NOTIFICATION_ID_WARNING, notification)
     }
 
     fun dismiss(context: Context) {
