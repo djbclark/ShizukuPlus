@@ -390,7 +390,7 @@
     <string name="settings_watchdog_summary">Automatically restart Shizuku+ after a crash or unexpected stop. Cannot reconnect when the underlying network disconnects (e.g. USB cable unplugged while using RNDIS/USB ADB).</string>
     <string name="settings_watchdog_not_running">On, not running right now</string>
     <string name="settings_device_hardening">Device Hardening &amp; Keepalive</string>
-    <string name="settings_device_hardening_summary">Exempt Shizuku and terminal clients from Doze, auto-grant WRITE_SECURE_SETTINGS, and sync starter binaries</string>
+    <string name="settings_device_hardening_summary">Exempt Shizuku and terminal clients from Doze, auto-grant WRITE_SECURE_SETTINGS, sync starter binaries, and while the Watchdog is on, lift background and battery limits on this app</string>
     <string name="doctor_check_device_hardening">Device Hardening &amp; Doze Exemption</string>
     <string name="device_hardening_applied">Device hardening &amp; Doze optimizations applied</string>
     <string name="settings_tcp_mode">TCP mode</string>
@@ -926,6 +926,16 @@
     <string name="watchdog_shizuku_crashed_title">Shizuku crashed recently</string>
     <string name="watchdog_shizuku_crashed_text">Watchdog restarted the service. Tap to learn about potential fixes to prevent future crashes.</string>
     <string name="watchdog_shizuku_crashed_action_turn_off_alerts">Turn Off Alerts</string>
+    <string name="battery_exemption_channel_name">Battery optimization</string>
+    <string name="battery_exemption_notification_title">Allow Shizuku+ to run in the background</string>
+    <string name="battery_exemption_notification_text">The Watchdog was turned on automatically. Exempt Shizuku+ from battery optimization so it can restart the service when it stops.</string>
+    <string name="vendor_battery_notification_title">Shizuku+ may be stopped in the background</string>
+    <string name="vendor_battery_notification_text">The Watchdog can be stopped by %1$s. Tap to open the setting that lets Shizuku+ keep running.</string>
+    <string name="vendor_battery_restriction_background_activity">the background activity restriction</string>
+    <string name="vendor_battery_restriction_standby_bucket">Android\'s limits for rarely used apps</string>
+    <string name="vendor_battery_restriction_samsung_deep_sleep">Samsung\'s Deep sleeping apps</string>
+    <string name="vendor_battery_restriction_xiaomi_autostart">Xiaomi\'s autostart setting</string>
+    <string name="vendor_battery_restriction_xiaomi_no_restrict">Xiaomi\'s battery saver (not set to No restrictions)</string>
 
     <!-- Misc -->
     <string name="dialog_cannot_open_browser_title">Can\'t start browser</string>

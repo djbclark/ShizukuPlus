@@ -34,6 +34,8 @@ All notable changes to ShizukuPlus are documented here. See [AI_ATTRIBUTIONS.md]
 - **The Watchdog and live activity now share a single notification** — Live activity is now shown only in the Watchdog's notification, so it needs the Watchdog on. Turning the Watchdog off removes that notification.
 - **The Watchdog switch in Settings now shows the stored setting** — even when the service is stopped, the switch shows whether the Watchdog is enabled, and its summary updates live to say "On, not running right now" (e.g. after background start restrictions).
 - **A quick Watchdog recovery no longer posts a crash notification** — if the Watchdog restarts the server and it comes back within 60 seconds, the recovery is logged to the activity history without popping a heads-up crash notice. Repeated crashes within the stability window still post the notification.
+- **A new install now tells you if battery optimization still restricts the Watchdog it turned on** — when the new-install default turns the Watchdog on and the app is still not exempt from Android's battery optimization (Device Hardening is off, or its exemption did not take), Shizuku+ writes this to the activity log and posts one notification; tapping it opens Android's request to exempt the app.
+- **The Watchdog now clears the extra background restrictions some phones add on top of battery optimization** — Samsung's Deep sleeping apps, Xiaomi's autostart, and the background-activity and standby-bucket limits. What Device Hardening allows is undone at every start, and anything that cannot be undone is named in one notification that opens the setting to fix it.
 
 ### ✨ Features
 

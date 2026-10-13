@@ -15,9 +15,12 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 import timber.log.Timber
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 object ShizukuStateMachine {
@@ -36,6 +39,29 @@ object ShizukuStateMachine {
         java.util.concurrent.atomic
             .AtomicLong(0L)
     private const val STARTING_TIMEOUT_MS = 90_000L
+
+    // One exemption check runs at a time in this process: two RUNNING transitions close together
+    // (a crash right after the first start, then a quick restart) each launch a coroutine that could
+    // read the pending flag before the other clears it. Claiming here keeps the post to one.
+    private val exemptionCheckRunning = AtomicBoolean(false)
+
+    /**
+     * Tests only: signalled when the post-RUNNING coroutine (Device Hardening, privilege grant,
+     * and the new-install battery-exemption check) has finished, so a scenario can wait for it.
+     */
+    @Volatile
+    @androidx.annotation.VisibleForTesting
+    var postRunningLatchForTesting: CountDownLatch? = null
+
+    /** Tests only: what a new process would start from (the persisted settled state). */
+    internal fun resetForTesting() {
+        state.set(loadPersistedSettledState())
+        startingTimestamp.set(0L)
+        postRunningLatchForTesting = null
+        exemptionCheckRunning.set(false)
+        BatteryOptimizationGuard.resetForTesting()
+        VendorBatteryRestrictions.resetForTesting()
+    }
 
     private fun loadPersistedSettledState(): State =
         try {
@@ -115,10 +141,53 @@ object ShizukuStateMachine {
                     try {
                         val context = ShizukuApplication.appContext
                         CoroutineScope(Dispatchers.IO).launch {
-                            if (ShizukuSettings.isDeviceHardeningEnabled()) {
-                                DeviceOptimizer.applyFixes(context)
+                            try {
+                                try {
+                                    if (ShizukuSettings.isDeviceHardeningEnabled()) {
+                                        DeviceOptimizer.applyFixes(context)
+                                    }
+                                    SettingsHelper.autoGrantPrivileges(context)
+                                } catch (e: Exception) {
+                                    Timber.tag("ShizukuStateMachine").e(e, "Failed to apply optimizations and privileges on RUNNING")
+                                }
+                                if (ShizukuSettings.isWatchdogExemptionPending() && exemptionCheckRunning.compareAndSet(false, true)) {
+                                    try {
+                                        if (!ShizukuSettings.getWatchdog()) {
+                                            // The user turned the Watchdog off after the default; nothing to exempt.
+                                            ShizukuSettings.clearWatchdogExemptionPending()
+                                        } else {
+                                            // The check runs on the main thread (not this IO dispatcher): the
+                                            // Robolectric unit tests serve the system services it reads reliably
+                                            // only from the main looper. It stays after the Device Hardening
+                                            // pass above, which is what makes it observe the pass's effect.
+                                            val settled =
+                                                withContext(Dispatchers.Main) {
+                                                    BatteryOptimizationGuard.ensureExemption(context)
+                                                }
+                                            if (settled) ShizukuSettings.clearWatchdogExemptionPending()
+                                        }
+                                    } catch (e: Exception) {
+                                        Timber.tag("ShizukuStateMachine").e(e, "Failed to check the battery exemption for the new-install Watchdog")
+                                    } finally {
+                                        exemptionCheckRunning.set(false)
+                                    }
+                                }
+                                if (ShizukuSettings.getWatchdog()) {
+                                    try {
+                                        // Vendor battery restrictions (Samsung, Xiaomi) are re-applied by the
+                                        // vendor at any time, so unlike the one-shot exemption check above this
+                                        // runs at every start while the Watchdog is on. The shell work stays on this
+                                        // IO dispatcher; the system-service reads inside switch to Main.
+                                        VendorBatteryRestrictions.check(context)
+                                    } catch (e: Exception) {
+                                        Timber.tag("ShizukuStateMachine").e(e, "Failed to check vendor battery restrictions")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Timber.tag("ShizukuStateMachine").e(e, "Failed to run the post-RUNNING work")
+                            } finally {
+                                postRunningLatchForTesting?.countDown()
                             }
-                            SettingsHelper.autoGrantPrivileges(context)
                         }
                     } catch (e: Exception) {
                         Timber.tag("ShizukuStateMachine").w(e, "Failed to apply optimizations and privileges on RUNNING")

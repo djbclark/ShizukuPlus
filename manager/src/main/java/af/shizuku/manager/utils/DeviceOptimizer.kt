@@ -10,6 +10,21 @@ import timber.log.Timber
 import java.io.File
 
 object DeviceOptimizer {
+    /**
+     * Tests only: run after this app is added to the Doze whitelist, so a scenario can simulate
+     * the whitelist command's effect (the app becoming exempt from battery optimization).
+     */
+    @androidx.annotation.VisibleForTesting
+    var onAppWhitelistedForTesting: ((String) -> Unit)? = null
+
+    /**
+     * Tests only: return the standard output for a shell command (null = the command failed or
+     * produced nothing), so a scenario can fake the appops / standby-bucket / autostart readings
+     * and the fix commands without a real server or root shell.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal var runCommandOutputForTesting: ((String) -> String?)? = null
+
     private fun runCommand(cmd: String): Boolean {
         if (Shizuku.pingBinder()) {
             try {
@@ -36,6 +51,73 @@ object DeviceOptimizer {
         return false
     }
 
+    /** How long a read through [runCommandOutput] may take before it is abandoned. */
+    private const val COMMAND_OUTPUT_TIMEOUT_SECONDS = 10L
+
+    /**
+     * [runCommand] but returning the command's standard output, so callers can read settings and
+     * appops from the shell. Returns null when the command could not run, exited non-zero or took
+     * longer than [COMMAND_OUTPUT_TIMEOUT_SECONDS]. Standard error is discarded, so a command that
+     * writes a lot there cannot fill its pipe and stall. Root is used only when the server is not
+     * reachable and the app already holds root, so a read never shows a root prompt.
+     */
+    internal fun runCommandOutput(cmd: String): String? {
+        runCommandOutputForTesting?.let { return it(cmd) }
+        if (Shizuku.pingBinder()) {
+            var p: rikka.shizuku.ShizukuRemoteProcess? = null
+            try {
+                val proc = Shizuku.newProcess(arrayOf("sh", "-c", "$cmd 2>/dev/null"), null, null) ?: return null
+                p = proc
+                val output =
+                    java.util.concurrent.atomic
+                        .AtomicReference<String?>(null)
+                // Read on its own thread so the wait below can time out; destroy() in finally
+                // closes the stream and ends the reader.
+                val reader =
+                    Thread {
+                        try {
+                            output.set(proc.inputStream.bufferedReader().use { it.readText() })
+                        } catch (_: Exception) {
+                        }
+                    }.apply {
+                        isDaemon = true
+                        start()
+                    }
+                if (!proc.waitForTimeout(COMMAND_OUTPUT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
+                    Timber.tag("DeviceOptimizer").w("Command timed out via Shizuku: $cmd")
+                    return null
+                }
+                reader.join(
+                    java.util.concurrent.TimeUnit.SECONDS
+                        .toMillis(COMMAND_OUTPUT_TIMEOUT_SECONDS),
+                )
+                return if (proc.exitValue() == 0) output.get() else null
+            } catch (e: Exception) {
+                Timber.tag("DeviceOptimizer").w(e, "Command failed via Shizuku: $cmd")
+                return null
+            } finally {
+                try {
+                    p?.destroy()
+                } catch (_: Exception) {
+                }
+            }
+        }
+        if (com.topjohnwu.superuser.Shell
+                .isAppGrantedRoot() == true
+        ) {
+            try {
+                val result =
+                    com.topjohnwu.superuser.Shell
+                        .cmd(cmd)
+                        .exec()
+                if (result.isSuccess) return result.out.joinToString("\n")
+            } catch (e: Exception) {
+                Timber.tag("DeviceOptimizer").w(e, "Command failed via Root: $cmd")
+            }
+        }
+        return null
+    }
+
     suspend fun applyFixes(context: Context): Boolean =
         withContext(Dispatchers.IO) {
             if (!Shizuku.pingBinder() && !EnvironmentUtils.isRooted()) {
@@ -46,6 +128,7 @@ object DeviceOptimizer {
 
             // 1. Whitelist Shizuku from Doze / Battery Optimization
             runCommand("dumpsys deviceidle whitelist +$pkgName")
+            onAppWhitelistedForTesting?.invoke(pkgName)
 
             // 2. Whitelist known terminal and companion packages if installed
             val clientPackages =
