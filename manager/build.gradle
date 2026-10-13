@@ -299,6 +299,8 @@ dependencies {
     testImplementation libs.mavericks.testing
     testImplementation libs.androidx.test.core
     testImplementation "junit:junit:4.13.2"
+    // Runs the JUnit 4 (Robolectric) tests under useJUnitPlatform(); without it Gradle skips them.
+    testRuntimeOnly libs.junit.vintage.engine
     androidTestImplementation "androidx.test.ext:junit:1.2.1"
     androidTestImplementation "androidx.test:runner:1.6.2"
     androidTestImplementation "androidx.test:rules:1.6.1"
@@ -308,6 +310,20 @@ android {
     testOptions {
         unitTests.all {
             useJUnitPlatform()
+        }
+        // Robolectric tests load the app's resources and manifest.
+        unitTests.includeAndroidResources = true
+    }
+}
+
+// refine registers its visitor with InstrumentationScope.ALL, which re-serializes every jar on
+// the unit-test runtime classpath while keeping META-INF signatures, so signed jars (conscrypt,
+// BouncyCastle) fail Robolectric with "SHA-256 digest error". Excluded entries are copied
+// byte-identically. Unit-test variants only, so the app's own build is unchanged.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        ["org/conscrypt/**", "org/bouncycastle/**"].each { pattern ->
+            variant.unitTest?.instrumentation?.excludes?.addAll(pattern)
         }
     }
 }

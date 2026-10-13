@@ -42,6 +42,7 @@ markwon = "4.6.2"
 mavericks = "3.0.9"
 kotestJunit5 = "5.9.1"
 robolectric = "4.14.1"
+junitVintage = "5.10.2"
 coroutines-test = "1.10.2"
 aboutlibraries = "11.6.3"
 leakcanary = "2.14"
@@ -89,6 +90,7 @@ mavericks = { group = "com.airbnb.android", name = "mavericks", version.ref = "m
 mavericks-testing = { group = "com.airbnb.android", name = "mavericks-testing", version.ref = "mavericks" }
 kotestJunit5 = { group = "io.kotest", name = "kotest-runner-junit5", version.ref = "kotestJunit5" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+junit-vintage-engine = { group = "org.junit.vintage", name = "junit-vintage-engine", version.ref = "junitVintage" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines-test" }
 
 aboutlibraries-core = { group = "com.mikepenz", name = "aboutlibraries-core", version.ref = "aboutlibraries" }

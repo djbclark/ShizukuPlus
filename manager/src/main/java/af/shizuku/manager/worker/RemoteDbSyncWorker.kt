@@ -30,6 +30,10 @@ class RemoteDbSyncWorker(
         // Only re-fetch if the cached data is older than 20 hours
         private const val MIN_REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1_000L
 
+        /** Tests only: replaces the network fetch. Null uses the real one. */
+        @androidx.annotation.VisibleForTesting
+        internal var fetchForTesting: ((String) -> String?)? = null
+
         fun schedule(context: Context) {
             val constraints =
                 Constraints
@@ -57,7 +61,7 @@ class RemoteDbSyncWorker(
         }
 
         return try {
-            val json = fetch(DB_URL)
+            val json = fetchForTesting.let { seam -> if (seam != null) seam(DB_URL) else fetch(DB_URL) }
             if (json != null) {
                 AppContextManager.updateDatabase(json)
                 Timber.d("RemoteDbSync: app context database updated successfully")

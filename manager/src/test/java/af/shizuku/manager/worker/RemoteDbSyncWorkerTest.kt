@@ -1,19 +1,20 @@
 package af.shizuku.manager.worker
 
 import af.shizuku.manager.ShizukuSettings
-import af.shizuku.manager.utils.AppContextManager
+import af.shizuku.manager.database.AppContextManager
 import android.content.Context
 import androidx.work.ListenableWorker.Result
 import androidx.work.WorkerParameters
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
-import io.mockk.mockkConstructor
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.runs
 import io.mockk.unmockkAll
-import java.net.URL
+import io.mockk.verify
 
 class RemoteDbSyncWorkerTest :
     FunSpec({
@@ -27,6 +28,7 @@ class RemoteDbSyncWorkerTest :
         }
 
         afterTest {
+            RemoteDbSyncWorker.fetchForTesting = null
             unmockkAll()
         }
 
@@ -43,12 +45,23 @@ class RemoteDbSyncWorkerTest :
         test("doWork returns retry when fetch throws exception") {
             every { ShizukuSettings.getLastDbUpdate() } returns 0L
 
-            mockkConstructor(URL::class)
-            every { anyConstructed<URL>().openConnection() } throws RuntimeException("Simulated network error")
+            RemoteDbSyncWorker.fetchForTesting = { throw RuntimeException("Simulated network error") }
 
             val worker = RemoteDbSyncWorker(context, workerParams)
             val result = worker.doWork()
 
             result shouldBe Result.retry()
+        }
+
+        test("doWork updates the database when the fetch returns data") {
+            every { ShizukuSettings.getLastDbUpdate() } returns 0L
+            every { AppContextManager.updateDatabase(any()) } just runs
+            RemoteDbSyncWorker.fetchForTesting = { "{}" }
+
+            val worker = RemoteDbSyncWorker(context, workerParams)
+            val result = worker.doWork()
+
+            result shouldBe Result.success()
+            verify(exactly = 1) { AppContextManager.updateDatabase("{}") }
         }
     })
